@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flappy Neon</title>
+  <style>
+    body {
+      margin: 30;
+      background: black;
+      font-family: monospace;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    canvas {
+      background: black;
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #0ff;
+      box-shadow: 0 0 20px #0ff, inset 0 0 10px #0ff;
+    }
+
+    #tip, #timer {
+      text-align: center;
+      font-size: 14px;
+      color: #0ff;
+      animation: glow 1.5s ease-in-out infinite alternate;
+    }
+
+    #timer {
+      margin-top: 5px;
+      font-size: 16px;
+      color: #ff0;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 5px #0ff, 0 0 10px #0ff; }
+      to { text-shadow: 0 0 20px #0ff, 0 0 40px #0ff; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="tip">Amazon Q Tip: Press ENTER to flap!</div>
+<div id="timer">Time: 0s</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+let bird = { x: 80, y: 300, radius: 12, velocity: 0 };
+let gravity = 0.5, flap = -8;
+let pipes = [], coins = [];
+let pipeGap = 140, speed = 2;
+let score = 0, highScore = localStorage.getItem("flappyHigh") || 0;
+let gameOver = false, started = false;
+
+let gameStartTime = 0;
+let elapsedTime = 0;
+
+const tips = [
+  "Press SPACE to flap up!",
+  "Collect coins for +10 points!",
+  "Avoid green pipes!",
+  "Press R to restart!",
+  "Game gets faster!"
+];
+
+setInterval(() => {
+  document.getElementById("tip").innerText = "Amazon Q Tip: " + tips[Math.floor(Math.random() * tips.length)];
+}, 6000);
+
+function drawStartScreen() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f0f";
+  ctx.font = "30px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("Neon Wings", 200, 80);
+
+  ctx.fillStyle = "#0ff";
+  ctx.font = "16px monospace";
+  ctx.fillText("Welcome to Neon Wings!", 200, 120);
+  ctx.fillStyle = "lime";
+  ctx.fillText("CONTROLS:", 200, 150);
+  ctx.fillText("- Press ENTER to flap", 200, 170);
+  ctx.fillText("- Press R to restart", 200, 190);
+
+  ctx.fillStyle = "yellow";
+  ctx.fillText("GAME RULES:", 200, 230);
+  ctx.fillText("- Avoid hitting the pipes", 200, 250);
+  ctx.fillText("- Collect coins for +10 points", 200, 270);
+  ctx.fillText("- Each pipe passed = +2 point", 200, 290);
+  ctx.fillText("- Game speed increases with score", 200, 320);
+
+  ctx.fillStyle = "#fff";
+  ctx.fillText("Press ENTER to start!", 200, 350);
+
+  ctx.fillStyle = "orange";
+  ctx.textAlign = "LEFT"
+  ctx.fillText("High Score: " + highScore, 200, 400);
+}
+
+function drawBird() {
+  ctx.beginPath();
+  ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+  ctx.fillStyle = "yellow";
+  ctx.shadowColor = "yellow";
+  ctx.shadowBlur = 15;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawPipes() {
+  for (let pipe of pipes) {
+    ctx.fillStyle = "lime";
+    ctx.fillRect(pipe.x, 0, pipe.width, pipe.top);
+    ctx.fillRect(pipe.x, pipe.top + pipeGap, pipe.width, canvas.height);
+  }
+}
+
+function drawCoins() {
+  for (let coin of coins) {
+    ctx.beginPath();
+    ctx.arc(coin.x, coin.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "gold";
+    ctx.shadowColor = "gold";
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawScore() {
+  ctx.fillStyle = "cyan";
+  ctx.font = "15px monospace";
+  ctx.fillText("Score: " + score, 20, 30);
+  ctx.fillStyle = "orange";
+  ctx.textAlign = "CENTER"
+  ctx.fillText("High Score: " + highScore, 250, 30);
+}
+
+function drawScore() {
+  ctx.font = "20px monospace";
+
+  // Left-aligned Score
+  ctx.textAlign = "left";
+  ctx.fillStyle = "cyan";
+  ctx.fillText("Score: " + score, 10, 30);
+
+  // Right-aligned High Score
+  ctx.textAlign = "right";
+  ctx.fillStyle = "orange";
+  ctx.fillText("High Score: " + highScore, canvas.width - 10, 30);
+}
+
+
+function drawGameOver() {
+  ctx.fillStyle = "orange";
+  ctx.font = "30px monospace";
+  ctx.fillText("GAME OVER", 200, 300);
+  ctx.fillStyle = "blue";
+  ctx.font = "18px monospace";
+  ctx.fillText("Best Score: " + highScore, 200, 330);
+  ctx.fillStyle = "yellow";
+  ctx.fillText("Press R to Restart", 200, 360);
+}
+
+function drawGameOver() {
+  ctx.textAlign = "center"; // Center align all text
+  ctx.font = "30px monospace";
+  ctx.fillStyle = "orange";
+  ctx.fillText("GAME OVER", canvas.width / 2, 300);
+
+  ctx.font = "18px monospace";
+  ctx.fillStyle = "blue";
+  ctx.fillText("Best Score: " + highScore, canvas.width / 2, 330);
+
+  ctx.fillStyle = "yellow";
+  ctx.fillText("Press R to Restart", canvas.width / 2, 360);
+}
+
+function update() {
+  if (!started) return drawStartScreen();
+  if (gameOver) return drawGameOver();
+
+  elapsedTime = Math.floor((Date.now() - gameStartTime) / 1000);
+  document.getElementById("timer").innerText = `Time: ${elapsedTime}s`;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  bird.velocity += gravity;
+  bird.y += bird.velocity;
+
+  if (bird.y + bird.radius > canvas.height || bird.y - bird.radius < 0) {
+    gameOver = true;
+    return;
+  }
+
+  // Pipes
+  if (pipes.length === 0 || pipes[pipes.length - 1].x < 220) {
+    let top = Math.random() * 250 + 50;
+    pipes.push({ x: 400, top: top, width: 50, passed: false });
+    coins.push({ x: 425, y: top + pipeGap / 2 });
+  }
+
+  for (let i = 0; i < pipes.length; i++) {
+    let p = pipes[i];
+    p.x -= speed;
+
+    if (!p.passed && p.x + p.width < bird.x) {
+      score++;
+      p.passed = true;
+      if (score % 10 === 0) speed += 0.5;
+    }
+
+    if (
+      bird.x + bird.radius > p.x &&
+      bird.x - bird.radius < p.x + p.width &&
+      (bird.y - bird.radius < p.top || bird.y + bird.radius > p.top + pipeGap)
+    ) {
+      gameOver = true;
+    }
+  }
+
+  for (let i = 0; i < coins.length; i++) {
+    let c = coins[i];
+    c.x -= speed;
+    if (Math.abs(c.x - bird.x) < 12 && Math.abs(c.y - bird.y) < 12) {
+      coins.splice(i, 1);
+      score += 5;
+    }
+  }
+
+  pipes = pipes.filter(p => p.x + p.width > 0);
+  coins = coins.filter(c => c.x > 0);
+
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem("flappyHigh", highScore);
+  }
+
+  drawPipes();
+  drawCoins();
+  drawBird();
+  drawScore();
+}
+
+function gameLoop() {
+  update();
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    if (!started) {
+      started = true;
+      gameStartTime = Date.now();
+    }
+    if (!gameOver) bird.velocity = flap;
+  } else if (e.code === "KeyR") {
+    reset();
+  }
+});
+
+function reset() {
+  bird.y = 300;
+  bird.velocity = 0;
+  pipes = [];
+  coins = [];
+  score = 0;
+  speed = 2;
+  gameOver = false;
+  started = false;
+  elapsedTime = 0;
+  document.getElementById("timer").innerText = "Time: 0s";
+}
+
+gameLoop();
+</script>
+</body>
+</html>
